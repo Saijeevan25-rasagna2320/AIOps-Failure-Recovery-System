@@ -1,0 +1,57 @@
+services:
+  user-service:
+    build:
+      context: .
+      dockerfile: user-service/Dockerfile
+    ports:
+      - "8001:8000"
+    environment:
+      MONGO_URL: mongodb+srv://rasagnak6_db_user:test123@microservicesdata.v9zjclz.mongodb.net/
+
+  order-service:
+    build:
+      context: .
+      dockerfile: order-service/Dockerfile
+    ports:
+      - "8002:8000"
+    environment:
+      MONGO_URL: mongodb+srv://rasagnak6_db_user:test123@microservicesdata.v9zjclz.mongodb.net/
+
+  inventory-service:
+    build:
+      context: .
+      dockerfile: inventory-service/Dockerfile
+    ports:
+      - "8003:8000"
+    environment:
+      MONGO_URL: mongodb+srv://rasagnak6_db_user:test123@microservicesdata.v9zjclz.mongodb.net/
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: payment-service/Dockerfile
+    ports:
+      - "8004:8000"
+    environment:
+      MONGO_URL: mongodb+srv://rasagnak6_db_user:test123@microservicesdata.v9zjclz.mongodb.net/
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
+    ports:
+      - "8005:8000"
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    ports:
+      - "8000:8000"
+
+  load-generator:
+    build:
+      context: .
+      dockerfile: load-generator/Dockerfile
+    ports:
+    - "8006:8000"
