@@ -1,4 +1,4 @@
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Histogram, Gauge 
 
 class Metrics:
     def __init__(self, service_name: str):
@@ -15,7 +15,7 @@ class Metrics:
         self.error_count = Counter(
             f"{service_name}_errors_total",
             "Total number of errors",
-            ["endpoint"]
+            ["endpoint", "type"]   # ✅ add "type"
         )
 
         # 🔹 Latency tracking (Histogram for percentiles)
@@ -31,4 +31,10 @@ class Metrics:
             f"{service_name}_dependency_calls_total",
             "Calls to dependent services",
             ["dependency", "status"]
+        )
+
+        self.in_progress = Gauge(
+            f"{service_name}_in_progress_requests",
+            "Number of in-progress requests",
+            ["endpoint"]
         )

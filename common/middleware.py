@@ -7,7 +7,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         self.metrics = metrics
 
     async def dispatch(self, request, call_next):
-        # 🚫 Skip metrics endpoint (avoid noise)
+        # 🚫 Skip metrics endpoint
         if request.url.path == "/metrics":
             return await call_next(request)
 
@@ -16,29 +16,42 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         endpoint = request.url.path
         method = request.method
 
+        # 🔥 Track in-progress requests (advanced)
+        self.metrics.in_progress.labels(endpoint=endpoint).inc()
+
         try:
             response = await call_next(request)
 
-            # ✅ Request count with labels
+            status_code = str(response.status_code)
+
+            # ✅ Request count
             self.metrics.request_count.labels(
                 method=method,
                 endpoint=endpoint,
-                status=str(response.status_code)
+                status=status_code
             ).inc()
+
+            # 🔥 Treat 5xx as errors automatically
+            if status_code.startswith("5"):
+                self.metrics.error_count.labels(
+                    endpoint,
+                    "server_error"
+                ).inc()
 
             return response
 
         except Exception:
-            # ❗ Error tracking
+            # ❗ Exception-based errors
             self.metrics.error_count.labels(
-                endpoint=endpoint
+                endpoint,
+                "exception"
             ).inc()
             raise
 
         finally:
-            # ⏱ Latency tracking
+            # ⏱ Latency
             latency = time.time() - start_time
+            self.metrics.latency.labels(endpoint=endpoint).observe(latency)
 
-            self.metrics.latency.labels(
-                endpoint=endpoint
-            ).observe(latency)
+            # 🔥 Decrement in-progress
+            self.metrics.in_progress.labels(endpoint=endpoint).dec()
