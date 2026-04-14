@@ -1,9 +1,31 @@
 from fastapi import FastAPI
 import requests, time
 from shared.db import db
+from fastapi.responses import Response
+from prometheus_client import generate_latest
+
+from common.metrics import Metrics
+from common.middleware import MetricsMiddleware
 
 app = FastAPI()
 orders = db["orders"]
+
+# Initialize metrics
+metrics = Metrics("order")
+
+# Add middleware
+app.add_middleware(MetricsMiddleware, metrics=metrics)
+
+@app.get("/")
+def home():
+    return {"message": "Order Service Running"}
+
+# Metrics endpoint (MANDATORY)
+@app.get("/metrics")
+def get_metrics():
+    return Response(generate_latest(), media_type="text/plain")
+
+
 
 USER_SERVICE = "http://user-service:8000/users/"
 INVENTORY_SERVICE = "http://inventory-service:8000"
