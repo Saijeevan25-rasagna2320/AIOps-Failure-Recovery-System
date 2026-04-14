@@ -24,8 +24,8 @@ app = FastAPI()
 def normal_load():
     while True:
         order = {
-            "user_id": random.randint(1, 10),
-            "product_id": random.randint(1, 5)
+            "user_id": random.randint(1, 250),
+            "product_id": random.randint(101,14326)
         }
 
         try:

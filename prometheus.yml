@@ -1,0 +1,23 @@
+global:
+  scrape_interval: 2s
+  evaluation_interval: 2s
+
+scrape_configs:
+
+  # 🔹 All microservices
+  - job_name: 'microservices'
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - order-service:8000
+          - payment-service:8000
+          - inventory-service:8000
+          - user-service:8000
+          - notification-service:8000
+          - api-gateway:8000
+
+  # 🔹 Infrastructure metrics
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets:
+          - node-exporter:9100
