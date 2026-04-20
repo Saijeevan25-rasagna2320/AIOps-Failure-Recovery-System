@@ -33,7 +33,7 @@ def normal_load():
         except:
             pass
 
-        time.sleep(random.uniform(0.05, 0.2))  # moderate load
+        time.sleep(random.uniform(0.1, 0.3))  # moderate load
 
 
 # ==============================
@@ -98,7 +98,7 @@ def health():
 
 def start_load():
     # start normal traffic threads
-    for _ in range(15):   # increase to 30 for more stress
+    for _ in range(8):   # increase to 30 for more stress
         t = threading.Thread(target=normal_load)
         t.daemon = True
         t.start()
