@@ -29,7 +29,7 @@ def normal_load():
         }
 
         try:
-            requests.post(URL, json=order, timeout=1)
+            requests.post(URL, json=order, timeout=5)
         except:
             pass
 
@@ -71,7 +71,7 @@ def burst_requests():
             requests.post(URL, json={
                 "user_id": random.randint(1, 10),
                 "product_id": random.randint(1, 5)
-            }, timeout=1)
+            }, timeout=5)
         except:
             pass
 

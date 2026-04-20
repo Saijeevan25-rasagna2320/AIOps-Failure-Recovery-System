@@ -26,5 +26,5 @@ def get_metrics():
 
 @app.post("/notify")
 def notify():
-    time.sleep(random.uniform(0.2, 1))
+    time.sleep(random.uniform(0.1, 0.3))
     return {"status": "sent"}
