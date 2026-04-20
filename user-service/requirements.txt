@@ -3,3 +3,5 @@ uvicorn
 pymongo
 prometheus_client
 gunicorn
+asyncio
+httpx
