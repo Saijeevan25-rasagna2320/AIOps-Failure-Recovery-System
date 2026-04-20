@@ -1,9 +1,14 @@
-FROM python:3.10
+FROM python:3.10-slim
 
 WORKDIR /app
+
+# Prevent Python buffering (important for logs/metrics visibility)
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 
 COPY . .
 
 RUN pip install --no-cache-dir -r notification-service/requirements.txt
 
-CMD ["uvicorn", "notification-service.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 4 workers, reasonable timeout, keepalive tuned
+CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "notification-service.main:app", "-w", "4", "-b", "0.0.0.0:8000", "--timeout", "30", "--keep-alive", "5", "--max-requests", "1000", "--max-requests-jitter", "100"]
