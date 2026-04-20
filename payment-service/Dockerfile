@@ -11,4 +11,4 @@ COPY . .
 RUN pip install --no-cache-dir -r payment-service/requirements.txt
 
 # 4 workers, reasonable timeout, keepalive tuned
-CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "payment-service.main:app", "-w", "4", "-b", "0.0.0.0:8000", "--timeout", "30", "--keep-alive", "5", "--max-requests", "1000", "--max-requests-jitter", "100"]
+CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "payment-service.main:app", "-w", "4", "-b", "0.0.0.0:8000", "--timeout", "30", "--keep-alive", "5", "--max-requests", "10000", "--max-requests-jitter", "500"]
