@@ -1,6 +1,5 @@
 from fastapi import FastAPI
-import time, random
-
+import asyncio, random
 from fastapi.responses import Response
 from prometheus_client import generate_latest
 
@@ -15,16 +14,29 @@ metrics = Metrics("notification")
 # Add middleware
 app.add_middleware(MetricsMiddleware, metrics=metrics)
 
-@app.get("/")
-def home():
-    return {"message": "Order Service Running"}
 
-# Metrics endpoint (MANDATORY)
+@app.get("/")
+async def home():
+    return {"message": "Notification Service Running"}
+
+
+# Metrics endpoint
 @app.get("/metrics")
-def get_metrics():
+async def get_metrics():
     return Response(generate_latest(), media_type="text/plain")
 
+
+# 🔥 async delay (very light)
+async def simulate_delay():
+    await asyncio.sleep(random.uniform(0.05, 0.2))  # reduced delay
+
+
+# ==============================
+# SEND NOTIFICATION
+# ==============================
 @app.post("/notify")
-def notify():
-    time.sleep(random.uniform(0.2, 1))
+async def notify():
+    await simulate_delay()
+
+    # always success (notifications should not break system)
     return {"status": "sent"}

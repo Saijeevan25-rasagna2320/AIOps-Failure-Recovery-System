@@ -1,30 +1,31 @@
 from fastapi import FastAPI
-import requests, time, random
+import httpx, time, random, asyncio
 from shared.db import db
 from fastapi.responses import Response
 from prometheus_client import generate_latest
 
 from common.metrics import Metrics
 from common.middleware import MetricsMiddleware
+from common.retry import retry_request
+from common.circuit_breaker import CircuitBreaker
 
 app = FastAPI()
 orders = db["orders"]
 
 # Initialize metrics
 metrics = Metrics("order")
-
-# Add middleware
 app.add_middleware(MetricsMiddleware, metrics=metrics)
 
-@app.get("/")
-def home():
-    return {"message": "Order Service Running"}
+# Async HTTP client (connection pooling)
+client = httpx.AsyncClient(
+    timeout=httpx.Timeout(5.0),
+    limits=httpx.Limits(max_connections=100, max_keepalive_connections=20)
+)
 
-# Metrics endpoint
-@app.get("/metrics")
-def get_metrics():
-    return Response(generate_latest(), media_type="text/plain")
-
+# Circuit breakers
+user_cb = CircuitBreaker()
+inventory_cb = CircuitBreaker()
+payment_cb = CircuitBreaker()
 
 # Service URLs
 USER_SERVICE = "http://user-service:8000/users/"
@@ -33,88 +34,138 @@ PAYMENT_SERVICE = "http://payment-service:8000/pay"
 NOTIFICATION_SERVICE = "http://notification-service:8000/notify"
 
 
+@app.get("/")
+async def home():
+    return {"message": "Order Service Running"}
+
+
+@app.get("/metrics")
+async def get_metrics():
+    return Response(generate_latest(), media_type="text/plain")
+
+
+# 🔥 Safe notification (fire-and-forget)
+async def safe_notify():
+    try:
+        await retry_request(client, "POST", NOTIFICATION_SERVICE)
+        metrics.dependency_calls.labels("notification_service", "success").inc()
+    except:
+        metrics.dependency_calls.labels("notification_service", "failed").inc()
+        pass
+
+
+# ==============================
+# MAIN ORDER FLOW
+# ==============================
 @app.post("/order")
-def place_order(order: dict):
+async def place_order(order: dict):
     start = time.time()
 
     status = "success"
     failure_reason = None
 
     try:
-        # 🔹 USER SERVICE
-        try:
-            res = requests.get(f"{USER_SERVICE}{order['user_id']}", timeout=2)
-            if res.status_code != 200:
+        # =========================
+        # 1. USER + INVENTORY CHECK (PARALLEL)
+        # =========================
+
+        if not user_cb.call_allowed():
+            raise Exception("user_circuit_open")
+
+        if not inventory_cb.call_allowed():
+            raise Exception("inventory_circuit_open")
+
+        async def get_user():
+            try:
+                res = await retry_request(
+                    client, "GET",
+                    f"{USER_SERVICE}{order['user_id']}"
+                )
+                if res.status_code != 200:
+                    raise Exception("user_failed")
+
+                user_cb.record_success()
+                metrics.dependency_calls.labels("user_service", "success").inc()
+                return res
+
+            except:
+                user_cb.record_failure()
                 metrics.dependency_calls.labels("user_service", "failed").inc()
-                raise Exception("user_failed")
-            metrics.dependency_calls.labels("user_service", "success").inc()
-        except:
-            metrics.dependency_calls.labels("user_service", "failed").inc()
-            raise
+                raise
 
-        # 🔹 INVENTORY CHECK
-        try:
-            stock = requests.get(
-                f"{INVENTORY_SERVICE}/check/{order['product_id']}",
-                timeout=2
-            ).json()
+        async def check_inventory():
+            try:
+                res = await retry_request(
+                    client, "GET",
+                    f"{INVENTORY_SERVICE}/check/{order['product_id']}"
+                )
+                data = res.json()
 
-            if stock["status"] != "available":
+                if data.get("status") != "available":
+                    raise Exception("out_of_stock")
+
+                inventory_cb.record_success()
+                metrics.dependency_calls.labels("inventory_service", "success").inc()
+                return data
+
+            except:
+                inventory_cb.record_failure()
                 metrics.dependency_calls.labels("inventory_service", "failed").inc()
-                failure_reason = "out_of_stock"
-                raise Exception("out_of_stock")
+                raise
 
-            metrics.dependency_calls.labels("inventory_service", "success").inc()
-        except:
-            metrics.dependency_calls.labels("inventory_service", "failed").inc()
-            raise
+        # Run both in parallel
+        await asyncio.gather(
+            get_user(),
+            check_inventory()
+        )
 
-        # 🔹 PAYMENT SERVICE
+        # =========================
+        # 2. PAYMENT
+        # =========================
+        if not payment_cb.call_allowed():
+            raise Exception("payment_circuit_open")
+
         try:
-            # 🔥 FAILURE INJECTION (for testing dashboards)
-            if random.random() < 0.2:
-                metrics.dependency_calls.labels("payment_service", "failed").inc()
+            # failure injection
+            if random.random() < 0.1:
                 raise Exception("simulated_payment_failure")
 
-            pay = requests.post(PAYMENT_SERVICE, timeout=2)
+            pay = await retry_request(client, "POST", PAYMENT_SERVICE)
 
             if pay.status_code != 200:
-                metrics.dependency_calls.labels("payment_service", "failed").inc()
-                failure_reason = "payment_failed"
                 raise Exception("payment_failed")
 
+            payment_cb.record_success()
             metrics.dependency_calls.labels("payment_service", "success").inc()
+
         except:
+            payment_cb.record_failure()
             metrics.dependency_calls.labels("payment_service", "failed").inc()
             raise
 
-        # 🔹 INVENTORY UPDATE
+        # =========================
+        # 3. INVENTORY UPDATE
+        # =========================
         try:
-            inv = requests.post(
-                f"{INVENTORY_SERVICE}/decrease/{order['product_id']}",
-                timeout=2
+            inv = await retry_request(
+                client,
+                "POST",
+                f"{INVENTORY_SERVICE}/decrease/{order['product_id']}"
             )
 
             if inv.status_code != 200:
-                metrics.dependency_calls.labels("inventory_update", "failed").inc()
-                failure_reason = "inventory_update_failed"
                 raise Exception("inventory_update_failed")
 
             metrics.dependency_calls.labels("inventory_update", "success").inc()
+
         except:
             metrics.dependency_calls.labels("inventory_update", "failed").inc()
             raise
 
-        # 🔹 NOTIFICATION
-        try:
-            notif = requests.post(NOTIFICATION_SERVICE, timeout=2)
-
-            if notif.status_code != 200:
-                metrics.dependency_calls.labels("notification_service", "failed").inc()
-            else:
-                metrics.dependency_calls.labels("notification_service", "success").inc()
-        except:
-            metrics.dependency_calls.labels("notification_service", "failed").inc()
+        # =========================
+        # 4. NOTIFICATION (ASYNC BACKGROUND)
+        # =========================
+        asyncio.create_task(safe_notify())
 
     except Exception as e:
         status = "failed"
@@ -122,7 +173,6 @@ def place_order(order: dict):
         if not failure_reason:
             failure_reason = str(e)
 
-        # 🔥 ADD THIS (CRITICAL)
         metrics.error_count.labels(
             endpoint="/order",
             type=failure_reason
@@ -130,7 +180,9 @@ def place_order(order: dict):
 
     latency = time.time() - start
 
-    # Store in MongoDB (for ML later)
+    # =========================
+    # 5. STORE ORDER
+    # =========================
     orders.insert_one({
         "order_id": f"ORD_{int(time.time()*1000)}",
         "user_id": order["user_id"],
@@ -146,3 +198,9 @@ def place_order(order: dict):
         "latency": latency,
         "failure_reason": failure_reason
     }
+
+
+# 🔥 graceful shutdown
+@app.on_event("shutdown")
+async def shutdown_event():
+    await client.aclose()

@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from shared.db import db
-import random, time
+import random, asyncio
 from fastapi.responses import Response
 from prometheus_client import generate_latest
 
@@ -16,24 +16,40 @@ metrics = Metrics("inventory")
 # Add middleware
 app.add_middleware(MetricsMiddleware, metrics=metrics)
 
+
 @app.get("/")
-def home():
-    return {"message": "Inventory Service Running"}   # ✅ fixed
+async def home():
+    return {"message": "Inventory Service Running"}
+
 
 # Metrics endpoint
 @app.get("/metrics")
-def get_metrics():
+async def get_metrics():
     return Response(generate_latest(), media_type="text/plain")
 
 
-@app.get("/check/{product_id}")
-def check_stock(product_id: int):
-    time.sleep(random.uniform(0.05, 0.4))
+# 🔥 async delay (non-blocking)
+async def simulate_delay():
+    await asyncio.sleep(random.uniform(0.05, 0.2))  # reduced + async
 
-    item = inventory.find_one({"product_id": product_id})  # ✅ FIXED
+
+# 🔥 controlled failure (reduced)
+def simulate_failure():
+    if random.random() < 0.05:   # reduced from 0.15 → 0.05
+        raise HTTPException(status_code=500, detail="inventory_failure")
+
+
+# ==============================
+# CHECK STOCK
+# ==============================
+@app.get("/check/{product_id}")
+async def check_stock(product_id: int):
+    await simulate_delay()
+
+    item = inventory.find_one({"product_id": product_id})
 
     if item is None:
-        return {"error": "product_not_found", "product_id": product_id}
+        return {"status": "not_found", "product_id": product_id}
 
     if item.get("stock", 0) <= 0:
         return {"status": "out_of_stock"}
@@ -41,13 +57,17 @@ def check_stock(product_id: int):
     return {"status": "available"}
 
 
+# ==============================
+# DECREASE STOCK
+# ==============================
 @app.post("/decrease/{product_id}")
-def decrease_stock(product_id: int):
-    print(product_id)
-    if random.random() < 0.15:
-        raise HTTPException(status_code=500)
+async def decrease_stock(product_id: int):
+    await simulate_delay()
 
-    # ✅ atomic update (better)
+    # controlled failure
+    simulate_failure()
+
+    # atomic update
     result = inventory.update_one(
         {"product_id": product_id, "stock": {"$gt": 0}},
         {"$inc": {"stock": -1}}

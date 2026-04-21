@@ -29,11 +29,11 @@ def normal_load():
         }
 
         try:
-            requests.post(URL, json=order, timeout=1)
+            requests.post(URL, json=order, timeout=5)
         except:
             pass
 
-        time.sleep(random.uniform(0.05, 0.2))  # moderate load
+        time.sleep(random.uniform(0.1, 0.3))  # moderate load
 
 
 # ==============================
@@ -71,7 +71,7 @@ def burst_requests():
             requests.post(URL, json={
                 "user_id": random.randint(1, 10),
                 "product_id": random.randint(1, 5)
-            }, timeout=1)
+            }, timeout=5)
         except:
             pass
 
@@ -98,7 +98,7 @@ def health():
 
 def start_load():
     # start normal traffic threads
-    for _ in range(15):   # increase to 30 for more stress
+    for _ in range(8):   # increase to 30 for more stress
         t = threading.Thread(target=normal_load)
         t.daemon = True
         t.start()
