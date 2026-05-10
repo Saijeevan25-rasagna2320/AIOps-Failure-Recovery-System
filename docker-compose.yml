@@ -58,6 +58,25 @@ services:
     ports:
       - "8006:8000"
 
+  phase3_aiops:
+    build:
+      context: .
+      dockerfile: phase3_aiops/Dockerfile
+    container_name: phase3_aiops
+    ports:
+      - "8010:8010"
+    volumes:
+      - ./phase3_aiops:/app/phase3_aiops
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - prometheus
+      - order-service
+      - payment-service
+      - inventory-service
+      - user-service
+      - notification-service
+      - api-gateway
+    restart: always
   prometheus:
     image: prom/prometheus
     container_name: prometheus
